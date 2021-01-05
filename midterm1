@@ -1,0 +1,167 @@
+#include "stm32f10x.h"
+#include "stm32f10x_tim.h" 
+
+static volatile uint32_t ticks; 
+uint16_t adcValue=0;
+float mapValue=0;
+	
+
+void delayInit() 
+{ 
+  SystemCoreClockUpdate(); 
+	SysTick_Config(SystemCoreClock / 1000000); // Overflow every 1 us 
+} 
+
+void delayDecrement()
+{
+	if (ticks != 0x00) 
+ 		ticks--;
+}
+void SysTick_Handler()
+{
+	delayDecrement();
+}
+
+
+void delayUs(uint32_t nTime) 
+{ 
+ 	ticks = nTime; 
+ 	while(ticks); 
+}
+void delayMs(uint32_t nTime) 
+{ 
+	while(nTime--)  {
+ 		delayUs(1000); 
+	}
+}
+
+
+TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+TIM_TimeBaseInitTypeDef TIM_InitStructure;
+TIM_OCInitTypeDef TIM_OCInitStructure;
+GPIO_InitTypeDef GPIO_InitStructure;
+
+
+void gpioConfig(){
+RCC_APB1PeriphClockCmd(	RCC_APB1Periph_TIM2| RCC_APB1Periph_TIM3, ENABLE);
+	
+RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_ADC1 | RCC_APB2Periph_AFIO, ENABLE);
+	
+GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_1| GPIO_Pin_2;
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+GPIO_Init(GPIOA, &GPIO_InitStructure);
+	
+
+GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IPD;
+GPIO_InitStructure.GPIO_Pin=GPIO_Pin_6 | GPIO_Pin_7;
+GPIO_Init(GPIOA,&GPIO_InitStructure);
+}
+
+void adcConfig(){
+	ADC_InitTypeDef ADC_InitStructure;
+		
+	ADC_InitStructure.ADC_ContinuousConvMode=ENABLE;
+	ADC_InitStructure.ADC_DataAlign=ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_ExternalTrigConv=ADC_ExternalTrigConv_None;
+	ADC_InitStructure.ADC_Mode=ADC_Mode_Independent;
+	ADC_InitStructure.ADC_NbrOfChannel=1;
+	ADC_InitStructure.ADC_ScanConvMode=DISABLE;
+	
+	ADC_Init(ADC1,&ADC_InitStructure);
+	ADC_Cmd(ADC1,ENABLE);
+
+}
+void timer2Config(){
+TIM_InitStructure.TIM_Period=35999;
+TIM_InitStructure.TIM_Prescaler=499;
+TIM_InitStructure.TIM_ClockDivision=0;
+TIM_InitStructure.TIM_CounterMode=TIM_CounterMode_Up;
+TIM_TimeBaseInit(TIM2,&TIM_InitStructure);
+TIM_Cmd(TIM2,ENABLE);
+	
+
+}
+///for each lead we have 3 different pwmConfig
+void pwmConfig(uint32_t val){ //for red led pin0
+TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+TIM_OCInitStructure.TIM_Pulse = val;
+TIM_OC2Init(TIM2, &TIM_OCInitStructure);
+TIM_OC2PreloadConfig(TIM2, TIM_OCPreload_Enable);
+}
+
+void pwm1Config(uint32_t val1){ //blue led --> Pin1
+TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+TIM_OCInitStructure.TIM_Pulse = val1;
+TIM_OC3Init(TIM2, &TIM_OCInitStructure);
+TIM_OC3PreloadConfig(TIM2, TIM_OCPreload_Enable);
+}
+
+void pwm2Config(uint32_t val2){ 
+TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+TIM_OCInitStructure.TIM_Pulse = val2;
+TIM_OC4Init(TIM2, &TIM_OCInitStructure);
+TIM_OC4PreloadConfig(TIM2, TIM_OCPreload_Enable);
+}
+
+
+
+uint16_t readADC(){
+	
+	ADC_RegularChannelConfig(ADC1,ADC_Channel_0,1,ADC_SampleTime_7Cycles5);
+	ADC_ResetCalibration(ADC1);
+while(ADC_GetResetCalibrationStatus(ADC1));
+ADC_StartCalibration(ADC1);
+while(ADC_GetCalibrationStatus(ADC1));
+// Start the conversion
+ADC_SoftwareStartConvCmd(ADC1, ENABLE);
+		
+	return ADC_GetConversionValue(ADC1);
+
+}
+
+float map(float adcValue, float max, float min, float conMax, float conMin){
+	
+	return adcValue*((conMax-conMin)/(max-min));
+
+}
+
+
+int main(){
+	gpioConfig();
+	timer2Config();
+	adcConfig();
+	
+
+delayInit();
+while(1){
+
+	
+	adcValue=readADC();
+	mapValue=map(adcValue,4095,0,0,100);
+	
+	
+	if (GPIO_ReadInputDataBit(GPIOA,GPIO_Pin_6)){	
+						while(GPIO_ReadInputDataBit(GPIOA,GPIO_Pin_6)){
+	pwmConfig(10);
+	delayMs(1000);
+	pwm2Config(2400);
+	delayMs(2000);
+
+
+			}
+		}
+	
+}
+}
+
